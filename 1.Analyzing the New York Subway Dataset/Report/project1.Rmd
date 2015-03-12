@@ -1,0 +1,182 @@
+---
+title: "Intro to Data Science - Final Project"
+author: "Yachen Yan"
+date: "Friday, December 26, 2014"
+output: html_document
+---
+
+## Overview
+For Part 1 of the project, the source code of solutions in Problem Sets 1, 2, 3, 4, and 5 are attached in the file uploaded.  
+For Part 2 of the project, I generate this document by R Markdown but not IPython Notebook, because I'm not familiar the second one. But I complete this project by both Python and R. The R code is only for generating reproducible document, and I hope that's OK. and I'm very sorry if this bring you any potential inconvenience for grading. The source code of Part 2 are attached in the file uploaded.   
+```{rOverview, eval=TRUE, echo=FALSE, results='hide', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+# Package Loading
+library(data.table)
+library(pander)
+library(fBasics)
+library(quantmod)
+library(randomForest)
+library(ggplot2)
+# Data Loading
+raw.data <- fread(input="turnstile_weather_v2.csv", header=TRUE)
+```
+
+## Section 1. Statistical Test
+```{rStatistical Test - 1, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+enter.rain <- raw.data[rain==1,ENTRIESn_hourly]
+enter.norain <- raw.data[rain==0,ENTRIESn_hourly]
+par(mfrow=c(1,2))
+qqnormPlot(enter.rain)
+qqnormPlot(enter.norain)
+par(mfrow=c(1,1))
+```
+$\qquad$  
+Based on the QQ-plot above, we can see that the distribution of turnstile entries is not Gaussian normal. Thus, the statistical test that require underlying distribution assumption is not appropriate for this situation. Therefore, we should use Non-parametric Test for testing whether there is significant difference of turnstile entries between rainy day and not-rainy day.  
+```{rStatistical Test - 2, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+mat <- matrix(0,2,2); dimnames(mat) <- list(c("Mean","Median"),c("Rain","NoRain"))
+mat['Mean','Rain'] <- mean(enter.rain)
+mat['Mean','NoRain'] <- mean(enter.norain)
+mat['Median','Rain'] <- median(enter.rain)
+mat['Median','NoRain'] <- median(enter.norain)
+pander(mat)
+pander(wilcox.test(enter.rain, enter.norain, alternative="two.sided"))
+```
+Based on the result of Mann-Whitney U test, we can see there is significant difference of turnstile entries between rainy day and not-rainy day. When it's rainy, there will be more people willing to take the subway.  
+
+**A1:** Mann-Whitney U test. two-tail P value, because we don't have prior knowledge about which one will have bigger value. the null hypothesis is the distributions of rainy-day turnstile entries and not-rainy-day turnstile entries differ by a location shift of 0. 
+
+**A2:** Because the distribution of turnstile entries is definitely not Gaussian normal distribution. but distributions of two samples are similar to each other. Thus, Mann-Whitney U test are applicable and appropriate. 
+
+**A3:** From the Mann-Whitney U test, the p-value is 5.482e-06. The mean of rainy-day turnstile entries is about 2028. The mean of not-rainy-day turnstile entries is about 1846.  
+
+**A4:** In rainy day, there are more people willing to take subway. And the "rainy or not-rainy" is informative to the prediction of turnstile entries.  
+
+## Section 2. Linear Regression
+
+**A1:** Ordinary least squares
+
+**A2:**  
+We use $log \left(1+x\right)$ transformation to approximate normal distribution.  
+Categorical Variable: weekday, fog, rain, hour.  
+Numeric Variable about Weather: precipi, pressurei, tempi, wspdi, meanprecipi, meanpressurei, meantempi, meanwspdi.  
+Numeric Variable about Entries: Lagged value of turnstile entries (lagged period from 1 to 6).  
+*NOTE:* To Compute a lagged version of a time series, we just shift the time base back by a given number of observations. Lagged Explanatory Variables are lagged values $x_{t-k}$ of observed variables $x_{t}$.  
+
+**A3:**  
+Categorical Variables are about weather and time. we think fog and rain are informative for prediction. Plus, we bring weekday and hour in because we think that the mean value of turnstile entries is time-variant. All Numeric Variables about Weather conditions may have influence on turnstile entries. Even though, put all these variables into the model may bring multicollinearity problem, we want to see the variables' explaining potential first, and then we may do feature selection. At last, we also think that yesterday's turnstile entries can help us predict today's turnstile entries. In statistics perspective, we should solve this problem using time series regression and use arima model with seasonal difference of period 6. However, we can also solve this problem in a machine learning perspective, therefore we put lagged series in our linear regression model as features.  
+For data exploration perspective: If we only put all Categorical Variable and Numeric Variable about Weather into our model, we can only get an OLS model with $R^{2}$ about 16%. if we put station as a dummy variable into our model, we can get an OLS model with $R^{2}$ about 49%, this result have a big improvement, because now we think that the mean value for each station are different. Still, if we put lagged series of turnstile entries (lagged period from 1 to 6) into our model, we can  get an OLS model with $R^{2}$ about 75%. the lagged period goes to 6 because our data's frequency is 6 times per day.  
+
+**A4:**  
+$R^{2} = 0.7463$  
+
+**A5:**  
+Our model can explain about 75% of the variation of turnstile entries.  
+I think what I can say is that our model is relatively okay for now. but I do think we have lots of potential for improvement.  
+```{rLinear Regression, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+# Linear Regression - 4
+data4 <- data.table()
+station <- unique(raw.data[,station])
+for(i in 1:length(station)){
+  data.temp <- raw.data[station==station[i],][,.(log(1+ENTRIESn_hourly),weekday,fog,rain,hour=as.factor(hour),
+                                                 precipi,pressurei,tempi,wspdi,meanprecipi,meanpressurei,meantempi,meanwspdi)]
+  data.temp2 <- cbind(data.temp, Lag(data.temp[,V1], k=1), Lag(data.temp[,V1], k=2)
+                      , Lag(data.temp[,V1], k=3), Lag(data.temp[,V1], k=4)
+                      , Lag(data.temp[,V1], k=5), Lag(data.temp[,V1], k=6))
+  data.temp3 <- na.omit(data.temp2)
+  data4 <- rbind(data4, data.temp3)
+}
+# OLS - 4
+model.ols4 <- lm(V1~., data=data4)
+pander(summary(model.ols4))
+```
+
+## Section 3. Visualization
+
+**A1:**  
+ENTRIESn_hourly for rainy days and for non-rainy days  
+```{rVisualization - 1, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+qplot(enter.rain, geom="histogram", binwidth=100)
+qplot(enter.norain, geom="histogram", binwidth=100)
+```
+
+**A2:**  
+Mean value of ENTRIESn_hourly for rainy days and for non-rainy days regarding to weekday  
+```{rVisualization - 2, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+mean.rain <- raw.data[rain==1,mean(ENTRIESn_hourly),by=day_week]
+mean.norain <- raw.data[rain==0,mean(ENTRIESn_hourly),by=day_week]
+week_days <- c("MON","TUE","WED","THU","FRI","SAT","SUN")
+week_days <- data.frame(week_days=factor(week_days,levels=week_days))
+mean.mat <- cbind(as.numeric(mean.rain[order(mean.rain[,day_week]),V1]),as.numeric(mean.norain[order(mean.norain[,day_week]),V1]))
+colnames(mean.mat) <- c("Rain","NoRain")
+mean.mat <- data.frame(mean.mat)
+mean.mat <- cbind(week_days,mean.mat)
+ggplot(data=mean.mat,aes(x=week_days))+geom_line(aes(y=Rain,colour="Rain",group=1))+geom_line(aes(y=NoRain,colour="NoRain",group=1))+theme(legend.title=element_blank())+xlab("WeekDay")+ylab("Entries")
+```
+
+## Section 4. Conclusion
+
+**A1:**  
+More people ride the NYC subway when it is raining versus when it is not raining.  
+
+**A2:**  
+The Mann-Whitney U test indicates that there is a significant difference of turnstile entries between rainy day and not-rainy day. The reason why we use this test because the distributions of turnstile entries in raining and not-raining day are not Gaussian normal but similar to each other. Thus we can use Mann-Whitney U test to test whether their location difference is significant.  
+
+## Section 5. Reflection
+
+**A1:**  
+There are some potential shortcomings of the data set and our method.  
+**shortcomings of the data set:**  
+First, the data set is relatively small. More data points may bring us better result, because we actually run this regression model for each station.   
+Second, there may be some potential error of in the data set. Some of turnstile entries are 0. These stations in that period may be closed. Thus, if we put those data points into our modeling, it may ruin our model in some degree.  
+Last, we may need more variable, such as some traffic statistics on the ground: degree of traffic jam , number of people on the bus, today's number of people entering into NYC through New York Penn and Port Authority etc.  
+**shortcomings of our method:**  
+Since the distribution of training data set are not Gaussian normal. And we have heteroscedasticity and multicollinearity problem. we may use some robust regression method.  
+Plus, we didn't do any feature engineering, we can try polynomial regression or use generating more linear features based on other variable in the data set. Or, we can also use some regression method that can learn pattern from residuals.  
+
+**A2:**  
+We can also do something beyond linearity:  
+We also run randomForest on our features, and we can achieve about 86% variance explanation.  
+This plot below is the partial dependence of variable: hour, tempi, day_week and Lagged value of turnstile entries.  
+```{rrandomForest, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+data5 <- data.table()
+station <- unique(raw.data[,station])
+for(i in 1:length(station)){
+  data.temp <- raw.data[station==station[i],][,.(log(1+ENTRIESn_hourly),day_week,fog,rain,hour,
+                                                 precipi,pressurei,tempi,wspdi,meanprecipi,meanpressurei,meantempi,meanwspdi)]
+  data.temp2 <- cbind(data.temp, Lag(data.temp[,V1], k=1), Lag(data.temp[,V1], k=2)
+                      , Lag(data.temp[,V1], k=3), Lag(data.temp[,V1], k=4)
+                      , Lag(data.temp[,V1], k=5), Lag(data.temp[,V1], k=6))
+  data.temp3 <- na.omit(data.temp2)
+  data5 <- rbind(data5, data.temp3)
+}
+set.seed(7)
+model.rf <- randomForest(V1~., data=data5, ntree=5)
+par(mfrow=c(2,2))
+partialPlot(model.rf, pred.data=data5, x.var="hour")
+partialPlot(model.rf, pred.data=data5, x.var="tempi")
+partialPlot(model.rf, pred.data=data5, x.var="day_week")
+partialPlot(model.rf, pred.data=data5, x.var="Lag.6")
+par(mfrow=c(1,1))
+```
+$\qquad$  
+And we can see the relationship between each variable and the predicted turnstile entries:  
+12:00 to 20:00 are the busiest hour of new york subway.  
+The influence of tempeture on turnstile entries is not linear. And it may have big jump on certain degree.  
+New york subway tend to become less busy as weekend approaches.  
+
+### Reference
+
+[1] http://scikit-learn.org/stable/  
+[2] https://github.com/yhat/ggplot  
+[3] http://nbviewer.ipython.org/url/www.asimihsan.com/articles/Intro%20to%20Data%20Science%20-%20Final%20Project.ipynb  
+[4] https://github.com/upjohnc/udacity  
+[5] http://www.mathworks.com/help/econ/examples/time-series-regression-viii-lagged-variables-and-estimator-bias.html  
+[6] Forecasting: principles and practice by Rob J Hyndman  
+
+
+
+
+
+
+
+
+

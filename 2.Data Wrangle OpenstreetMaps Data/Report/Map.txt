@@ -1,0 +1,3 @@
+Map Area: State College, Pennsylvania
+Data Download Link: https://s3.amazonaws.com/metro-extracts.mapzen.com/state-college_pennsylvania.osm.bz2
+Introduction: The community is a college town, dominated economically and demographically by the presence of the University Park campus of the Pennsylvania State University (from Wikipedia). I choose this area because I personally have been there once to join NE Chinese Soccer Tournament in Penn State University last year. It's a quaint, rustic place.
