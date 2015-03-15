@@ -1,0 +1,396 @@
+---
+title: "Explore and Summarize Data - Final Project"
+author: "Yachen Yan"
+date: "Saturday, January 31, 2015"
+output: html_document
+---
+
+```{r Packages Loading, eval=TRUE, echo=FALSE, results='hide', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+Sys.setlocale(,"ENG")
+# Package
+library(reshape2)
+library(dplyr)
+library(RColorBrewer)
+library(corrplot)
+library(scatterplot3d)
+library(plot3D)
+library(ggplot2)
+library(gridExtra)
+library(GGally)
+library(psych)
+library(dplyr)
+library(scales)
+library(memisc)
+library(pander)
+library(knitr)
+library(randomForest)
+```
+
+```{r Data Loading, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+# Data
+wine <- read.csv("wineQualityWhites.csv", 
+                 colClasses=c("NULL",rep("numeric",11),"factor"))
+str(wine)
+dim(wine)
+levels(wine$quality)
+table(wine$quality)
+```
+We can see that we have 4898 observations and we also have 11 input variables and 1 output variable which we can transform from a score to an ordered factor. It has seven levels and highly unbalanced.  
+
+
+# Univariate Plots Section
+```{r Univariate_Plots1, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+# Univariate_Plots
+
+# Univariate_histogram
+uh.fun <- function(x, binwidth=1){
+  object <- ggplot(data=wine, aes_string(x=x)) + 
+    geom_histogram(binwidth=binwidth)
+  return(object)
+}
+uh <- list()
+uh.x <- colnames(wine)
+uh.binwidth <- c(0.2, 0.02, 0.05, 1, 0.01, 5, 5, 0.03, 0.05, 0.05, 0.2, 1)
+for(i in 1:12) uh[[i]] <- uh.fun(uh.x[i], uh.binwidth[i])
+grid.arrange(uh[[1]], uh[[2]], uh[[3]], uh[[4]], uh[[5]], uh[[6]])
+grid.arrange(uh[[7]], uh[[8]], uh[[9]], uh[[10]], uh[[11]], uh[[12]])
+
+# Univariate_density
+ud.fun <- function(x){
+  object <- ggplot(data=wine, aes_string(x=x)) + geom_density()
+  return(object)
+}
+ud <- list()
+ud.x <- colnames(wine)
+for(i in 1:11) ud[[i]] <- ud.fun(ud.x[i])
+grid.arrange(ud[[1]], ud[[2]], ud[[3]], ud[[4]], ud[[5]], ud[[6]])
+grid.arrange(ud[[7]], ud[[8]], ud[[9]], ud[[10]], ud[[11]])
+```
+  
+We can see most of variables follow nearly normal distribution with some outliers, except "residual.sugar" and "density" which are highly skewed. For the output variable "quality", It's highly unbalanced. That may cause problem if we want to fit a classification model.  
+
+```{r Univariate_Plots2, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+# Univariate_transformation
+grid.arrange(ggplot(data=wine, aes(x=residual.sugar)) + 
+               geom_histogram(binwidth=0.05) + scale_x_log10(),
+             ggplot(data=wine, aes(x=residual.sugar)) + 
+               geom_density() + scale_x_log10())
+```
+  
+I transformed the "residual.sugar" variable with "log10" transformation. We can see it follows bimodal pattern.  
+
+
+# Univariate Analysis
+  
+### What is the structure of your dataset?
+There are 4898 observations with 11 input variables and 1 output variable. The input variables are all numeric variable.  
+The output variable "quality" has 7 levels and highly unbalanced. "residual.sugar" and "density" are skewed distributed. Other variables basically normally distributed.  
+  
+### What is/are the main feature(s) of interest in your dataset?
+Even though I personally don't have too much domain knowledge for wine, And even though we have one feature can predict the quality significantly better than others, To answer this question, we may want to fit an nonlinear model and check feature importance. The modeling part is in next question below PCA.  
+  
+### What other features in the dataset do you think will help support your investigation into your feature(s) of interest?
+All the other features are very important. The final score of quality may be calculated in a very complex and unlinear way by those features. We may do feature selection in our modeling part but not now. For now, I just run a PCA first, and I found that it's very hard too find a few directions that contain most of variance which means basically all the features contain its own information itself.  
+```{r PCA, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+wine.parallel <- fa.parallel(wine[colnames(wine)!="quality"], fa="pc")
+wine.pca <- principal(wine[colnames(wine)!="quality"], nfactors=3, rotate="none")
+wine.pca$loadings
+barplot(wine.parallel$pc.values/sum(wine.parallel$pc.values))
+```
+  
+Then, I tries to predict the quality by randomforest. Through the Variable Importance Plot, we can see that the feature "alcohol" can provide us most explanatory power. For computing speed consideration, I didn't use a large numer for trees to grow. This part is only for the plot but not for very high accuracy.  
+```{r randomForest, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+set.seed(7)
+rf <- randomForest(quality~., data=transform(wine, quality=as.numeric(quality))
+                   , ntree=100)
+varImpPlot(rf)
+partialPlot(rf, pred.data=wine, x.var=alcohol)
+```
+  
+And from the partial dependence plot, we also can see that "alcohol" and "quality" seems having positive correlation. The "quality" tends to be higher when the "alcohol" is high.  
+
+### Did you create any new variables from existing variables in the dataset?
+I created a categorical variable which is alcohol.category in Multivariate Plots Section. and I also compute the scores of first 3 principal components in PCA in next section.  
+  
+### Of the features you investigated, were there any unusual distributions? Did you perform any operations on the data to tidy, adjust, or change the form of the data? If so, why did you do this?
+The data is pretty tidy and clean. There are no missing values. I log-transformed "residual.sugar" which is right-skewed. And it shows bimodal pattern after transformation.  
+
+
+# Bivariate Plots Section
+```{r Bivariate_Plots1, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+corrplot(cor(transform(wine, quality=as.numeric(quality))), 
+         method="ellipse", type="lower")
+pairs.panels(wine)
+wine.pca <- principal(wine[,c(-12,-13)], nfactors=3, rotate="none")
+wine.3scores <- data.frame(wine.pca$scores,quality=wine$quality)
+ggplot(data=wine.3scores, aes(x=PC1, y=PC2)) + 
+  geom_point(aes(colour=quality)) + 
+  scale_colour_brewer(palette="GnBu") + 
+  coord_cartesian(xlim=c(-2.5,3.75), ylim=c(-3.75,5.0))
+with(data=wine.3scores, scatterplot3d(x=PC1, y=PC2, z=PC3, color=quality, 
+                                      xlim=c(-2,3), ylim=c(-4,4), 
+                                      zlim=c(-6,6), angle=70,
+                                      main="First 3 Principal Components 
+                                      and Quality"))
+```
+  
+From the correlation matrix, we can see that the "density" variable has some positive correlations with "residual.sugar", "chlorides", "free.sulfur.dioxide" and "total.sulfur.dioxide". And we can also see that "alcohol" has some negative correlations with variables mentioned above. and we can also see that the "alcohol" and "quality" has positive correlation, though not very strong.  
+From the scatterplot matrix, we can see that except the correlation we mentioned ablove, other scatterplot between variables show no linear relationship patterns.  
+
+```{r Bivariate_Plots2, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+ggplot(data=wine, aes(x=free.sulfur.dioxide, y=total.sulfur.dioxide)) + 
+  geom_point(alpha=1/2) + 
+  coord_cartesian(xlim=quantile(wine$free.sulfur.dioxide,c(0.01,0.99)), 
+                  ylim=quantile(wine$total.sulfur.dioxide,c(0.01,0.99))) + 
+  geom_smooth(method="loess")
+  
+ggplot(data=wine, aes(x=total.sulfur.dioxide, y=density)) + 
+  geom_point(alpha=1/2) + 
+  coord_cartesian(xlim=quantile(wine$total.sulfur.dioxide,c(0.01,0.99)), 
+                  ylim=quantile(wine$density,c(0.01,0.99))) + 
+  geom_smooth(method="loess")
+
+ggplot(data=wine, aes(x=residual.sugar, y=density)) + 
+  geom_point(alpha=1/2) + 
+  coord_cartesian(xlim=quantile(wine$residual.sugar,c(0.01,0.99)), 
+                  ylim=quantile(wine$density,c(0.01,0.99))) + 
+  geom_smooth(method="loess")
+  
+ggplot(data=wine, aes(x=density, y=alcohol)) + 
+  geom_point(alpha=1/2) + 
+  coord_cartesian(xlim=quantile(wine$density,c(0.01,0.99)), 
+                  ylim=quantile(wine$alcohol,c(0.01,0.99))) + 
+  geom_smooth(method="loess")
+
+# Bivariate_histogram
+bh.fun <- function(x, fill, binwidth){
+  object <- ggplot(data=wine, aes_string(x=x, fill=fill)) + 
+    geom_histogram(binwidth=binwidth) + 
+    scale_fill_brewer(palette="YlGnBu")
+  return(object)
+}
+bh <- list()
+bh.x <- colnames(wine)
+bh.binwidth <- c(0.2, 0.02, 0.05, 1, 0.01, 5, 5, 0.03, 0.05, 0.05, 0.2, 1)
+for(i in 1:12) bh[[i]] <- bh.fun(bh.x[i], "quality", bh.binwidth[i])
+grid.arrange(bh[[1]], bh[[2]], bh[[3]], bh[[4]])
+grid.arrange(bh[[5]], bh[[6]], bh[[7]], bh[[8]])
+grid.arrange(bh[[9]], bh[[10]], bh[[11]], bh[[12]])
+
+# Bivariate_boxplot
+bb.fun <- function(x, y){
+  object <- ggplot(data=wine, aes_string(x=x, y=y)) + geom_boxplot()
+  return(object)
+}
+bb <- list()
+bb.y <- colnames(wine)
+for(i in 1:11) bb[[i]] <- bb.fun("quality", bb.y[i])
+grid.arrange(bb[[1]], bb[[2]], bb[[3]], bb[[4]], bb[[5]], bb[[6]])
+grid.arrange(bb[[7]], bb[[8]], bb[[9]], bb[[10]], bb[[11]])
+```
+  
+After we excluded the top and last 1% of variables for each pair of variables, we wanted to check the linear relationship for a few pairs of variables that we were interested. And we could observe positive relationship between "free.sulfur.dioxide" and "total.sulfur.dioxide", "total.sulfur.dioxide" and "density", "residual.sugar" and "density". We could also observe negative relationship between "density" and "alcohol".  
+We also can see each quality of wine basically distributed in all the part of ranges of that 11 input variables. And we didn't see particular clear patterns of input variables's mean and variance given different quality.   
+
+
+# Bivariate Analysis
+  
+### Talk about some of the relationships you observed in this part of the investigation. How did the feature(s) of interest vary with other features in the dataset?
+I used correlation matrix plot to observe the correlation between variables.  And we could observe positive relationship between "free.sulfur.dioxide" and "total.sulfur.dioxide", "total.sulfur.dioxide" and "density", "residual.sugar" and "density". We could also observe negative relationship between "density" and "alcohol".  
+  
+### Did you observe any interesting relationships between the other features (not the main feature(s) of interest)?
+If we think that the principal component scores are features after pre-processing. We can see that it explain the relationship better than any features along. And if we carefully check the loading matrix of PCA, we can have better understanding of our data.  
+  
+### What was the strongest relationship you found? 
+The variable "density" and "residual.sugar" have very strong positive correlation which is 0.84.  
+
+
+# Multivariate Plots Section
+
+```{r Multivariate_Plots1, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+ggplot(data=wine, 
+       aes(x=free.sulfur.dioxide, y=total.sulfur.dioxide, colour=quality)) + 
+  geom_point() + 
+  scale_colour_brewer(palette="YlGnBu") + 
+  coord_cartesian(xlim=quantile(wine$free.sulfur.dioxide,c(0.01,0.99)), 
+                  ylim=quantile(wine$total.sulfur.dioxide,c(0.01,0.99)))
+
+ggplot(data=wine, aes(x=residual.sugar, y=density, colour=quality)) + 
+  geom_point() + 
+  scale_colour_brewer(palette="YlGnBu") + 
+  coord_cartesian(xlim=quantile(wine$residual.sugar,c(0.01,0.99)), 
+                  ylim=quantile(wine$density,c(0.01,0.99)))
+
+ggplot(data=wine, aes(x=free.sulfur.dioxide, y=density, colour=quality)) + 
+  geom_point() + 
+  scale_colour_brewer(palette="YlGnBu") + 
+  coord_cartesian(xlim=quantile(wine$free.sulfur.dioxide,c(0.01,0.99)), 
+                  ylim=quantile(wine$density,c(0.01,0.99)))
+
+ggplot(data=wine, aes(x=total.sulfur.dioxide, y=density, colour=quality)) + 
+  geom_point() + 
+  scale_colour_brewer(palette="YlGnBu") + 
+  coord_cartesian(xlim=quantile(wine$total.sulfur.dioxide,c(0.01,0.99)), 
+                  ylim=quantile(wine$density,c(0.01,0.99)))
+
+wine <- transform(wine, alcohol.category=cut(wine$alcohol, 
+                                             c(8.00,9.50,10.40,11.40,14.20)))
+
+ggplot(data=wine, aes(x=free.sulfur.dioxide, 
+                      y=total.sulfur.dioxide, 
+                      colour=alcohol.category)) + 
+  geom_point() + 
+  scale_colour_brewer(palette="YlOrRd") + 
+  coord_cartesian(xlim=quantile(wine$free.sulfur.dioxide,c(0.01,0.99)), 
+                  ylim=quantile(wine$total.sulfur.dioxide,c(0.01,0.99)))
+
+ggplot(data=wine, aes(x=residual.sugar, y=density, colour=alcohol.category)) + 
+  geom_point() + 
+  scale_colour_brewer(palette="YlOrRd") + 
+  coord_cartesian(xlim=quantile(wine$residual.sugar,c(0.01,0.99)), 
+                  ylim=quantile(wine$density,c(0.01,0.99)))
+
+ggplot(data=wine, aes(x=free.sulfur.dioxide, 
+                      y=density, 
+                      colour=alcohol.category)) + 
+  geom_point() + 
+  scale_colour_brewer(palette="YlOrRd") + 
+  coord_cartesian(xlim=quantile(wine$free.sulfur.dioxide,c(0.01,0.99)), 
+                  ylim=quantile(wine$density,c(0.01,0.99)))
+
+ggplot(data=wine, aes(x=total.sulfur.dioxide, 
+                      y=density, 
+                      colour=alcohol.category)) + 
+  geom_point() + 
+  scale_colour_brewer(palette="YlOrRd") + 
+  coord_cartesian(xlim=quantile(wine$total.sulfur.dioxide,c(0.01,0.99)), 
+                  ylim=quantile(wine$density,c(0.01,0.99)))
+```
+  
+I tried to use strongly correlated variables in a scatterplot coloured by quality to get some sense for classification. But I can't see very strong clusters on the first 4 plot.  
+Then I used "alcohol" to create a categorical variable "alcohol.category". And I use scatterplot to observe strongly correlated variables and points were coloured by "alcohol.category". We can see pretty clear but not 100% perfect hyperplanes to separate points.  
+
+```{r Multivariate_Plots2, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+wine.pca <- principal(wine[!colnames(wine)%in%c("quality","alcohol.category")], 
+                      nfactors=3, rotate="none")
+wine.3scores <- data.frame(wine.pca$scores,quality=wine$quality)
+ggplot(data=wine.3scores, aes(x=PC1, y=PC2)) + 
+  geom_point(aes(colour=quality)) + 
+  scale_colour_brewer(palette="GnBu") + 
+  coord_cartesian(xlim=c(-2.5,3.75), ylim=c(-3.75,5.0))
+with(data=wine.3scores, scatterplot3d(x=PC1, y=PC2, z=PC3, color=quality, 
+                                      xlim=c(-2,3), ylim=c(-4,4), 
+                                      zlim=c(-6,6), angle=70,
+                                      main="First 3 PC and Quality"))
+```
+  
+I also used principal component analysis and extract the first 3 scores for visualization. The first graph's xy-asis is the first 2 component scores and the points is coloured by quality. The second graph's xyz-asis is the first 3 component scores and the points is coloured by quality. Maybe it's not very clear to all the people. But I think somehow we can see these data points knd of clustered in the plot. For the 3D plot, if we can rotate this plot, we may find some hyperplanes that can roughly classifficate those data points.  
+
+
+# Multivariate Analysis
+  
+### Talk about some of the relationships you observed in this part of the investigation. Were there features that strengthened each other in terms of looking at your feature(s) of interest?
+For example, we can see that "residual.sugar" and "density" is positive correlated. And if we coluored the points by "alcohol.category", we can see clear clusters. Generally, a wine with low density and high residual.sugar tend to contain more alcohol.  
+  
+### Were there any interesting or surprising interactions between features?
+Yes, I thought that 11 input variables are totally uncorrelated to each other. but after I quantified their correlation and use scatterplot to visualize it. I observed clear clusters pn the plot.  
+  
+### OPTIONAL: Did you create any models with your dataset? Discuss the strengths and limitations of your model.
+I used random forest to classificate the quality. I achieved about 72% accuracy rate as In-Sample performance. The strength of this model is that it's very flexible and usually doesn't have too much overfitting. The limitations is that the training data set is highly unbalanced, this may become a problem in generalization.  
+
+------
+
+# Final Plots and Summary
+
+### Plot One
+```{r Plot_One, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+ggplot(data=wine, aes(x=residual.sugar, y=density, colour=alcohol.category)) + 
+  geom_point() + 
+  scale_colour_brewer(palette="YlGnBu") + 
+  coord_cartesian(xlim=quantile(wine$residual.sugar,c(0.01,0.99)), 
+                  ylim=quantile(wine$density,c(0.01,0.99)))
+```
+
+### Description One
+I used "alcohol" to create a categorical variable "alcohol.category". And I use scatterplot to observe strongly correlated variables and points were coloured by "alcohol.category". We can see pretty clear but not 100% perfect hyperplanes to separate points. we can see that "residual.sugar" and "density" is positive correlated. And if we coluored the points by "alcohol.category", we can see clear clusters. Generally, a wine with low density and high residual.sugar tend to contain more alcohol. And a wine with high density and low residual.sugar tend to contain less alcohol.  
+
+### Plot Two
+```{r Plot_Two, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+grid.arrange(ggplot(data=wine, aes(x=density, y=alcohol, colour=quality)) + 
+               geom_point() + 
+               scale_colour_brewer(palette="GnBu") + 
+               coord_cartesian(xlim=quantile(wine$density,c(0.01,0.99)), 
+                               ylim=quantile(wine$alcohol,c(0.01,0.99))) + 
+               ggtitle("Alcohol by Density and Quality")
+             ,
+             ggplot(data=wine, 
+                    aes(x=density, y=residual.sugar, colour=quality)) + 
+               geom_point() + 
+               scale_colour_brewer(palette="YlGnBu") + 
+               coord_cartesian(xlim=quantile(wine$density,c(0.01,0.99)), 
+                               ylim=quantile(wine$residual.sugar,c(0.01,0.99)))+
+               ggtitle("Density by Residual.Sugar and Quality")
+             ,
+             ggplot(data=wine.3scores, aes(x=PC1, y=PC2)) + 
+               geom_point(aes(colour=quality)) + 
+               scale_colour_brewer(palette="GnBu") + 
+               coord_cartesian(xlim=c(-2.5,3.75), ylim=c(-3.75,5.0)) + 
+               ggtitle("PC2 by PC1 and Quality"))
+```
+
+### Description Two
+The first 2 plots were trying to use two variable to classificate quality, however the third plot are different though it's a two dimension plot. For the third plot, the X-axis and Y-axis are first 2 principal components which explain 44% percent of variance. We can see that the third one is better than the first two plots. the data points on this plot are clearly clustered.  
+
+### Plot Three
+```{r Plot_Three, eval=TRUE, echo=FALSE, results='hold', warning=FALSE, error=FALSE, message=FALSE, tidy=TRUE, fig.show='hold', comment=NA}
+wine <- read.csv("wineQualityWhites.csv")[,-1]
+wine.pca <- principal(wine[colnames(wine)!="quality"], nfactors=3, rotate="none")
+wine.3scores <- data.frame(wine.pca$scores,quality=wine$quality)
+with(data=wine.3scores, scatter3D(x=PC1, y=PC2, z=PC3, colvar=quality, 
+                                  phi=25, theta=120, 
+                                  xlim=c(-2,3), ylim=c(-4,4), 
+                                  zlim=c(-6,6), alpha=0.5, 
+                                  main="First 3 PCs Coloured by Quality", 
+                                  clab="Quality"))
+with(data=wine.3scores, scatter3D(x=PC1, y=PC2, z=PC3, colvar=quality, 
+                                  phi=0, theta=90, 
+                                  xlim=c(-2,3), ylim=c(-4,4), 
+                                  zlim=c(-6,6), alpha=0.5, 
+                                  main="First 3 PCs Coloured by Quality", 
+                                  clab="Quality"))
+with(data=wine.3scores, scatter3D(x=PC1, y=PC2, z=PC3, colvar=quality, 
+                                  phi=0, theta=180, 
+                                  xlim=c(-2,3), ylim=c(-4,4), 
+                                  zlim=c(-6,6), alpha=0.5, 
+                                  main="First 3 PCs Coloured by Quality", 
+                                  clab="Quality"))
+with(data=wine.3scores, scatter3D(x=PC1, y=PC2, z=PC3, colvar=quality, 
+                                  phi=270, theta=0, 
+                                  xlim=c(-2,3), ylim=c(-4,4), 
+                                  zlim=c(-6,6), alpha=0.5, 
+                                  main="First 3 PCs Coloured by Quality", 
+                                  clab="Quality"))
+```
+  
+### Description Three
+Well, this plot is not as beautiful as any plots before. The XYZ-axis are first 3 principal components which explain 55% percent of variance. And it's better than the last plot, the points are clustered more clear. if we check the loadings matrix of PCA, we can get some sense about how the data being distributed in that 3-Dimensional Space. And we can see though there may exist some curve surfaces that can separate those points well, the variables' information may still support our classification in an very complex and non-linear way. we should use more flexible model like svm or random forest to model our data, though we can also try multinomial logistic regression first.  
+
+------
+
+# Reflection
+This dataset has 4898 observations with 11 input variables and 1 output variable. Actually, I have zero domain knowledge about wine, therefore I heavily rely on data analysis to get some sense. I only found one input variable are slightly correlated with output variable.  Though I found some input variables are correlated with each other which may bring us to other interesting topic, but it could not help us to build better model. Plus, I also conduct principal component analysis, trying to combine all the input variables together. As result, this dimension reduction method help me find the direction which contain most variance. From the "First 3 Principal Components Coloured by Quality" plot, we could find a few hyperplanes that roughly separate data points. Since I did not find strong linear patterns in exploratory data analysis, I used random forest to build a classification model. I achieved about 72% accuracy rate as In-Sample performance. However, Since modeling is not our main topic, I didn't separate the data to training data set and testing data set. Therefore, I didn't do pre-processing for the input variables to avoid overfitting and I didn't do anything to address the unbalanced data problem. The strength of this model is that it's very flexible and usually doesn't have too much overfitting. The limitations is that the training data set is highly unbalanced, this may become a problem in generalization.  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
